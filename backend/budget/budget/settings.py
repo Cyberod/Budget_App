@@ -38,7 +38,14 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'budgets',
+    'api',
+    'graphene_django',
 ]
+
+
+GRAPHENE = {
+    'SCHEMA': 'api.schema.schema'
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
