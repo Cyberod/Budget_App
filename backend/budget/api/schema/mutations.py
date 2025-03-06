@@ -2,7 +2,12 @@ import graphene
 from django.db import models
 from .types import BudgetPlanType, CategoryType, SubcategoryType
 from budgets.models import BudgetPlan, Category, Subcategory
-import re
+from .validators import (
+    validate_name,
+    validate_percentage_value,
+    validate_cateogry_total,
+    validate_subcategory_total
+)
 
 
 class CreateBudgetPlan(graphene.Mutation):
@@ -13,7 +18,8 @@ class CreateBudgetPlan(graphene.Mutation):
     budget_plan = graphene.Field(BudgetPlanType)
 
     @classmethod
-    def mutate(cls, root, info, name, user, is_predefined=False):
+    def mutate(cls, root, info, name, is_predefined=False):
+        validate_name(name)
         user = info.context.user
         if not user.is_authenticated:
             raise Exception("You must be logged in to create a Budget plan")
@@ -39,11 +45,14 @@ class CreateCategory(graphene.Mutation):
     Category = graphene.Field(CategoryType)
 
     def mutate(self, info, name, percentage, budget_plan_id):
+        validate_name(name)
+        validate_percentage_value(percentage)
         user = info.context.user
         if not user.is_authenticated:
             raise Exception("You must be logged in to create a category")
         
         budget_plan = BudgetPlan.objects.get(pk=budget_plan_id)
+        validate_cateogry_total(budget_plan, new_percentage=percentage)
         if budget_plan.user != user:
             raise Exception("You can only add categories to your own budget plans")
 
@@ -73,11 +82,14 @@ class CreateSubcategory(graphene.Mutation):
     subcategory = graphene.Field(SubcategoryType)
 
     def mutate(self, info, name, percentage, category_id):
+        validate_name(name)
+        validate_percentage_value(percentage)
         user = info.context.user
         if not user.is_authenticated:
             raise Exception("You must be logged in to create a subcategory")
 
         category = Category.objects.get(pk=category_id)
+        validate_subcategory_total(category, new_percentage=percentage)
         if category.budget_plan.user != user:
             raise Exception("You can only add subcategories to your own categories")
 
@@ -125,11 +137,12 @@ class UpdateSubcategory(graphene.Mutation):
             raise Exception("You can only update subcategories in your own budget plans")
 
         if percentage:
-            if not cls.validate_new_total(subcategory.category, subcategory, percentage):
-                raise Exception("Total percentage cannot exceed 100%")
+            validate_percentage_value(percentage)
+            validate_subcategory_total(subcategory.category, subcategory, percentage)
             subcategory.percentage = percentage
 
         if name:
+            validate_name(name)
             subcategory.name = name
 
         subcategory.save()
@@ -200,14 +213,7 @@ class UpdateCategory(graphene.Mutation):
         #check if total is more than 100%
         return total + new_percentage <= 100
     
-    def validate_new_name(budget_plan, current_category, new_name):
-        new_name = Category.objects.filter(budget_plan=budget_plan).exclude(id=current_category)
 
-        if not new_name.is_alpha():
-            return False
-        
-        return new_name
-    
     @classmethod
     def mutate(cls, root, info, category_id, name=None, percentage=None):
         user = info.context.user
@@ -220,10 +226,11 @@ class UpdateCategory(graphene.Mutation):
         if category.budget_plan.is_predefined or category.budget_plan.user != user:
             raise Exception("you can only update category in your custom budget plan")
         if name:
+            validate_name(name)
             category.name = name
         if percentage:
-            if not cls.validate_new_total(category.budget_plan,category, percentage):
-                raise Exception("Total sum of categorys cannot exceed 100%")
+            validate_percentage_value(percentage)
+            validate_cateogry_total(category.budget_plan, category, percentage)
             category.percentage = percentage
 
         category.save()
