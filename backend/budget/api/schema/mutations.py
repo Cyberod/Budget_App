@@ -70,8 +70,36 @@ class UpdateBudgetPlan(graphene.Mutation):
         budget_plan.save()
         return UpdateBudgetPlan(budget_plan=budget_plan)
 
+
+class DeleteBudgetPlan(graphene.Mutation):
+    class Arguments:
+        budget_plan_id = graphene.ID(required=True)
+
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    @classmethod
+    def mutate(cls, root, info, budget_plan_id, name=None):
+        user = info.context.user
+
+        if not user.is_authenticated:
+            raise Exception("You must be logged in to delete budget plan")
         
-    
+        budget_plan = BudgetPlan.objects.get(pk=budget_plan_id)
+        if budget_plan.user != user:
+            raise Exception("You can only delete your custom plans")
+        
+        if budget_plan.is_predefined:
+            raise Exception("Predefined plans cannot be deleted")
+        
+        
+
+        budget_plan.delete()
+        return DeleteBudgetPlan(
+            success=True,
+            message="Budget plan Successfully deleted"
+        )
+
 
 class CreateCategory(graphene.Mutation):
     class Arguments:
@@ -151,9 +179,37 @@ class UpdateCategory(graphene.Mutation):
 
         category.save()
         return UpdateCategory(Category=category)
-
-
     
+
+class DeleteCategory(graphene.Mutation):
+    class Arguments:
+        category_id = graphene.ID(required=True)
+
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    @classmethod
+    def mutate(cls, root, info, category_id):
+        user = info.context.user
+
+        if not user.is_authenticated:
+            raise Exception("You must be logged in to delete category")
+        
+        category = Category.objects.get(pk=category_id)
+
+        if category.budget_plan.user != user:
+            raise Exception("You can only delete categories from your own budget plans")
+        
+        if category.budget_plan.is_predefined:
+            raise Exception("you can only update category in your custom budget plan")
+        
+        
+
+        category.delete()
+        return DeleteCategory(
+            success=True,
+            message="Category Successfully deleted"
+        )
 
 class CreateSubcategory(graphene.Mutation):
     class Arguments:
@@ -234,6 +290,33 @@ class UpdateSubcategory(graphene.Mutation):
         return UpdateSubcategory(subcategory=subcategory)
  
 
+class DeleteSubcategory(graphene.Mutation):
+    class Arguments:
+        subcategory_id = graphene.ID(required=True)
+
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    @classmethod
+    def mutate(cls, root,  info, subcategory_id):
+        user = info.context.user
+        if not user.is_authenticated:
+            raise Exception("You must be logged in to delete a subcategory")
+
+        subcategory = Subcategory.objects.get(pk=subcategory_id)
+        
+        if subcategory.category.budget_plan.user != user:
+            raise Exception("You can only delete subcategories from your own budget plans")
+            
+        if subcategory.category.budget_plan.is_predefined:
+            raise Exception("Subcategories in predefined plans cannot be deleted")
+
+        subcategory.delete()
+        return DeleteSubcategory(
+            success=True, 
+            message="Subcategory successfully deleted"
+        )
+
 class FinalizeBudgetPlan(graphene.Mutation):
     class Arguments:
         budget_plan_id = graphene.ID(required=True)
@@ -267,11 +350,7 @@ class FinalizeBudgetPlan(graphene.Mutation):
             success=True,
             message="Budget plan successfully finalized"
         )
-    
-
-
-
-            
+              
 
 
 class Mutation(graphene.ObjectType):
@@ -282,3 +361,7 @@ class Mutation(graphene.ObjectType):
     update_category = UpdateCategory.Field()
     update_subcategory = UpdateSubcategory.Field()
     update_budget_plan = UpdateBudgetPlan.Field()
+    delete_budget_plan = DeleteBudgetPlan.Field()
+    delete_category = DeleteCategory.Field()
+    delete_subcategory = DeleteSubcategory.Field()
+
