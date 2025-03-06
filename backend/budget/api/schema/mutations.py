@@ -6,7 +6,12 @@ from .validators import (
     validate_name,
     validate_percentage_value,
     validate_cateogry_total,
-    validate_subcategory_total
+    validate_subcategory_total,
+    validate_budget_plan_name_unique,
+    validate_category_name_unique,
+    validate_plan_completeness,
+    validate_plan_status,
+    validate_subcategory_name_unique
 )
 
 
@@ -20,6 +25,7 @@ class CreateBudgetPlan(graphene.Mutation):
     @classmethod
     def mutate(cls, root, info, name, is_predefined=False):
         validate_name(name)
+        validate_budget_plan_name_unique(user, name)
         user = info.context.user
         if not user.is_authenticated:
             raise Exception("You must be logged in to create a Budget plan")
@@ -33,6 +39,37 @@ class CreateBudgetPlan(graphene.Mutation):
         )
         budget_plan.save()
         return CreateBudgetPlan(budget_plan=budget_plan)
+    
+
+class UpdateBudgetPlan(graphene.Mutation):
+    class Arguments:
+        name = graphene.String(required=True)
+        budget_plan_id = graphene.ID(required=True)
+
+    budget_plan = graphene.Field(BudgetPlanType)
+
+    @classmethod
+    def mutate(cls, root, info, budget_plan_id, name=None):
+        user = info.context.user
+
+        if not user.is_authenticated:
+            raise Exception("You must be logged in to update budget plan")
+        
+        budget_plan = BudgetPlan.objects.get(pk=budget_plan_id)
+        if budget_plan.user != user:
+            raise Exception("You can only update your custom plans")
+        
+        if budget_plan.is_predefined:
+            raise Exception("Predefined plans cannot be updated")
+        
+        if name:
+            validate_name(name)
+            validate_budget_plan_name_unique(name, user, budget_plan)
+            budget_plan.name = name
+
+        budget_plan.save()
+        return UpdateBudgetPlan(budget_plan=budget_plan)
+
         
     
 
@@ -47,6 +84,7 @@ class CreateCategory(graphene.Mutation):
     def mutate(self, info, name, percentage, budget_plan_id):
         validate_name(name)
         validate_percentage_value(percentage)
+        validate_category_name_unique(name, budget_plan)
         user = info.context.user
         if not user.is_authenticated:
             raise Exception("You must be logged in to create a category")
@@ -73,6 +111,50 @@ class CreateCategory(graphene.Mutation):
         return CreateCategory(Category=category)
     
 
+class UpdateCategory(graphene.Mutation):
+    class Arguments:
+        name = graphene.String()
+        percentage = graphene.Decimal()
+        category_id = graphene.ID(required=True)
+
+    Category = graphene.Field(CategoryType)
+
+    @staticmethod
+    def validate_new_total(budget_plan, current_category, new_percentage):
+        total = Category.objects.filter(budget_plan=budget_plan)\
+        .exclude(id=current_category.id)\
+        .aggregate(total=models.Sum('percentage'))['total'] or 0
+
+        #check if total is more than 100%
+        return total + new_percentage <= 100
+    
+
+    @classmethod
+    def mutate(cls, root, info, category_id, name=None, percentage=None):
+        user = info.context.user
+        if not user.is_authenticated:
+            raise Exception("You must be logged in to update category")
+
+        category = Category.objects.get(pk=category_id)
+
+        # Check if plan is predefined or belongs to User
+        if category.budget_plan.is_predefined or category.budget_plan.user != user:
+            raise Exception("you can only update category in your custom budget plan")
+        if name:
+            validate_name(name)
+            validate_category_name_unique(name, category.budget_plan, category)
+            category.name = name
+        if percentage:
+            validate_percentage_value(percentage)
+            validate_cateogry_total(category.budget_plan, category, percentage)
+            category.percentage = percentage
+
+        category.save()
+        return UpdateCategory(Category=category)
+
+
+    
+
 class CreateSubcategory(graphene.Mutation):
     class Arguments:
         name = graphene.String(required=True)
@@ -84,6 +166,7 @@ class CreateSubcategory(graphene.Mutation):
     def mutate(self, info, name, percentage, category_id):
         validate_name(name)
         validate_percentage_value(percentage)
+        validate_subcategory_name_unique(name, category)
         user = info.context.user
         if not user.is_authenticated:
             raise Exception("You must be logged in to create a subcategory")
@@ -132,6 +215,7 @@ class UpdateSubcategory(graphene.Mutation):
         if not user.is_authenticated:
             raise Exception("You must be logged in to update subcategory")
 
+        
         subcategory = Subcategory.objects.get(pk=subcategory_id)
         if subcategory.category.budget_plan.user != user:
             raise Exception("You can only update subcategories in your own budget plans")
@@ -143,6 +227,7 @@ class UpdateSubcategory(graphene.Mutation):
 
         if name:
             validate_name(name)
+            validate_subcategory_name_unique(name, subcategory.category, subcategory)
             subcategory.name = name
 
         subcategory.save()
@@ -157,21 +242,6 @@ class FinalizeBudgetPlan(graphene.Mutation):
     success = graphene.Boolean()
     message = graphene.String()
 
-    @staticmethod
-    def validate_category_total(budget_plan):
-        total = Category.objects.filter(budget_plan=budget_plan).aggregate(
-            total=models.Sum('percentage'))['total'] or 0
-        return total == 100
-
-    @staticmethod
-    def validate_subcategory_totals(budget_plan):
-        categories = Category.objects.filter(budget_plan=budget_plan)
-        for category in categories:
-            total = Subcategory.objects.filter(category=category).aggregate(
-                total=models.Sum('percentage'))['total'] or 0
-            if total != 100 and total != 0:  # Allow categories without subcategories
-                return False
-        return True
 
     @classmethod
     def mutate(cls, root, info, budget_plan_id):
@@ -183,11 +253,14 @@ class FinalizeBudgetPlan(graphene.Mutation):
         if budget_plan.user != user:
             raise Exception("You can only finalize your own budget plans")
 
-        if not cls.validate_category_total(budget_plan):
-            raise Exception("Category percentages must total exactly 100%")
+        validate_plan_status(budget_plan)
+        validate_plan_completeness(budget_plan)
 
-        if not cls.validate_subcategory_totals(budget_plan):
-            raise Exception("Subcategories within each category must total exactly 100%")
+        categories = Category.objects.filter(budget_plan=budget_plan)
+        for category in categories:
+            subcategories = Subcategory.objects.filter(category=category)
+            if subcategories.exists():
+                validate_subcategory_total(category)
 
         return FinalizeBudgetPlan(
             budget_plan=budget_plan,
@@ -195,46 +268,6 @@ class FinalizeBudgetPlan(graphene.Mutation):
             message="Budget plan successfully finalized"
         )
     
-
-class UpdateCategory(graphene.Mutation):
-    class Arguments:
-        name = graphene.String()
-        percentage = graphene.Decimal()
-        category_id = graphene.ID(required=True)
-
-    Category = graphene.Field(CategoryType)
-
-    @staticmethod
-    def validate_new_total(budget_plan, current_category, new_percentage):
-        total = Category.objects.filter(budget_plan=budget_plan)\
-        .exclude(id=current_category.id)\
-        .aggregate(total=models.Sum('percentage'))['total'] or 0
-
-        #check if total is more than 100%
-        return total + new_percentage <= 100
-    
-
-    @classmethod
-    def mutate(cls, root, info, category_id, name=None, percentage=None):
-        user = info.context.user
-        if not user.is_authenticated:
-            raise Exception("You must be logged in to update category")
-
-        category = Category.objects.get(pk=category_id)
-
-        # Check if plan is predefined or belongs to User
-        if category.budget_plan.is_predefined or category.budget_plan.user != user:
-            raise Exception("you can only update category in your custom budget plan")
-        if name:
-            validate_name(name)
-            category.name = name
-        if percentage:
-            validate_percentage_value(percentage)
-            validate_cateogry_total(category.budget_plan, category, percentage)
-            category.percentage = percentage
-
-        category.save()
-        return UpdateCategory(Category=category)
 
 
 
@@ -248,3 +281,4 @@ class Mutation(graphene.ObjectType):
     finalize_budget_plan = FinalizeBudgetPlan.Field()
     update_category = UpdateCategory.Field()
     update_subcategory = UpdateSubcategory.Field()
+    update_budget_plan = UpdateBudgetPlan.Field()
