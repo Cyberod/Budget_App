@@ -98,7 +98,7 @@ def validate_percentage_value(percentage):
 
 
 
-def validate_cateogry_total(budget_plan, current_category=None, new_percentage=None):
+def validate_category_total(budget_plan, current_category=None, new_percentage=None):
     """ Validates total percentage for categories in a Budget plan """
 
     query = Category.objects.filter(budget_plan=budget_plan)

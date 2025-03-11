@@ -1,14 +1,17 @@
 import graphene
+from graphql_jwt.decorators import login_required
 from .types import BudgetPlanType, CategoryType, SubcategoryType
 from budgets.models import BudgetPlan, Category, Subcategory
 from django.db import models
 
 class Query(graphene.ObjectType):
     all_budget_plans = graphene.List(BudgetPlanType)
-    budget_plan = graphene.Field(BudgetPlanType, id=graphene.Int())
+    budget_plan = graphene.Field(BudgetPlanType, id=graphene.ID())
     user_budget_plans = graphene.List(BudgetPlanType)
     predefined_plans = graphene.List(BudgetPlanType)
 
+
+    @login_required
     def resolve_all_budget_plans(self, info):
         user = info.context.user
 
@@ -18,6 +21,7 @@ class Query(graphene.ObjectType):
             models.Q(is_predefined=True) | models.Q(user=user)
         )
     
+    @login_required
     def resolve_budget_plan(self, info, id):
         user = info.context.user
 
@@ -28,6 +32,7 @@ class Query(graphene.ObjectType):
         
         raise Exception("you do not have permission to view this budget plan")
     
+    @login_required
     def resolve_user_budget_plan(self, info, id):
         user = info.context.user
 
