@@ -1,11 +1,13 @@
 from graphene_django import DjangoObjectType
 from budgets.models import BudgetPlan, Category, Subcategory
-from django.contrib.auth.models import User
+#from django.contrib.auth.models import User
+
+from django.contrib.auth import get_user_model
 
 
 class UserType(DjangoObjectType):
     class Meta:
-        model = User
+        model = get_user_model()
         fields = ('id', 'username')
 
 
