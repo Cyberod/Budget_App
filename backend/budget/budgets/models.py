@@ -11,7 +11,7 @@ class BudgetPlan(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     is_predefined = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
-
+    currency = models.ForeignKey('Currency', on_delete=models.SET_NULL, null=True, blank=True)
     def __str__(self):
         return self.name
     
@@ -73,4 +73,13 @@ class Subcategory(models.Model):
     def save(self, *args, **kwargs):
         self.clean()
         super().save(*args, **kwargs)
+
+
+class Currency(models.Model):
+    code = models.CharField(max_length=3, primary_key=True) # e.g., USD, EUR, GBP
+    name = models.CharField(max_length=100) # e.g., US Dollar
+    symbol = models.CharField(max_length=5) # e.g., $, €, £
+
+    def __str__(self):
+        return f"{self.code} - {self.name}"
 

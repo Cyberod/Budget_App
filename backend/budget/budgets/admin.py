@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import BudgetPlan, Category, Subcategory
+from .models import BudgetPlan, Category, Subcategory, Currency
 
 @admin.register(BudgetPlan)
 class BudgetPlanAdmin(admin.ModelAdmin):
@@ -20,3 +20,10 @@ class SubcategoryAdmin(admin.ModelAdmin):
     list_display = ('name', 'percentage', 'category')
     list_filter = ('category',)
     search_fields = ('name',)
+
+
+@admin.register(Currency)
+class CurrencyAdmin(admin.ModelAdmin):
+    list_display = ('name', 'code', 'symbol')
+    list_filter = ('name', 'code')
+    search_fields = ('name', 'code')

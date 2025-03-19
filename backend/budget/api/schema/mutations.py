@@ -1,8 +1,8 @@
 import graphene
 from graphql_jwt.decorators import login_required
 from django.db import models
-from .types import BudgetPlanType, CategoryType, SubcategoryType
-from budgets.models import BudgetPlan, Category, Subcategory
+from .types import BudgetPlanType, CategoryType, SubcategoryType, CurrencyType
+from budgets.models import BudgetPlan, Category, Subcategory, Currency
 from .validators import (
     validate_name,
     validate_percentage_value,
@@ -34,10 +34,14 @@ class CreateBudgetPlan(graphene.Mutation):
         if is_predefined and not user.is_staff:
             raise Exception("Only admins can create predefined plans")
         
+        # Get default USD currency
+        usd_currency = Currency.objects.get(code='USD')
+
         budget_plan = BudgetPlan(
             name=name,
             is_predefined=is_predefined,
-            user=user
+            user=user,
+            currency=usd_currency
         )
         budget_plan.save()
         return CreateBudgetPlan(budget_plan=budget_plan)
@@ -370,6 +374,32 @@ class FinalizeBudgetPlan(graphene.Mutation):
         )
               
 
+class SetBudgetPlanCurrency(graphene.Mutation):
+    class Arguments:
+        budget_plan_id = graphene.ID(required=True)
+        currency_id = graphene.ID(required=True)
+
+    budget_plan = graphene.Field(BudgetPlanType)
+    currency = graphene.Field(CurrencyType)  # Add this line
+
+    @classmethod
+    @login_required
+    def mutate(cls, root, info, budget_plan_id, currency_id):
+        user = info.context.user
+        budget_plan = BudgetPlan.objects.get(pk=budget_plan_id)
+
+        if budget_plan.user != user:
+            raise Exception("You can only modify your own budget plan")
+
+        currency = Currency.objects.get(pk=currency_id)
+        budget_plan.currency = currency
+        budget_plan.save()
+
+        return SetBudgetPlanCurrency(
+            budget_plan=budget_plan,
+            currency=currency  # Return the currency too
+        )
+
 
 class Mutation(graphene.ObjectType):
     create_budget_plan = CreateBudgetPlan.Field()
@@ -382,4 +412,5 @@ class Mutation(graphene.ObjectType):
     delete_budget_plan = DeleteBudgetPlan.Field()
     delete_category = DeleteCategory.Field()
     delete_subcategory = DeleteSubcategory.Field()
+    set_budget_plan_currency = SetBudgetPlanCurrency.Field()
 
