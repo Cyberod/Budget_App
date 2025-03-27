@@ -8,6 +8,8 @@ import Dashboard from './pages/Dashboard';
 import CreateBudgetPlan from './pages/CreateBudgetPlan';
 import BudgetPlanDetail from './pages/BudgetPlanDetail';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import CopyBudgetPlan from './pages/CopyBudgetPlan';
+
 import './styles/App.css';
 
 function App() {
@@ -40,6 +42,22 @@ function App() {
               element={
                 <ProtectedRoute>
                   <BudgetPlanDetail />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/budget/:id" 
+              element={
+                <ProtectedRoute>
+                  <BudgetPlanDetail />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/copy-budget/:id" 
+              element={
+                <ProtectedRoute>
+                  <CopyBudgetPlan />
                 </ProtectedRoute>
               } 
             />

@@ -110,6 +110,60 @@ class DeleteBudgetPlan(graphene.Mutation):
         )
 
 
+class CopyBudgetPlan(graphene.Mutation):
+    class Arguments:
+        source_plan_id = graphene.ID(required=True)
+        name = graphene.String(required=True)
+    
+    budget_plan = graphene.Field(BudgetPlanType)
+    success = graphene.Boolean()
+    message = graphene.String()
+    
+    def mutate(self, info, source_plan_id, name):
+        user = info.context.user
+        if not user.is_authenticated:
+            raise Exception("You must be logged in to copy a budget plan")
+        
+        # Get the source plan
+        try:
+            source_plan = BudgetPlan.objects.get(pk=source_plan_id)
+        except BudgetPlan.DoesNotExist:
+            raise Exception("Source budget plan not found")
+        
+        # Create a new plan for the user
+        new_plan = BudgetPlan(
+            name=name,
+            is_predefined=False,
+            user=user
+        )
+        new_plan.save()
+        
+        # Copy all categories from the source plan
+        for category in Category.objects.filter(budget_plan=source_plan):
+            new_category = Category(
+                name=category.name,
+                percentage=category.percentage,
+                budget_plan=new_plan
+            )
+            new_category.save()
+            
+            # Copy all subcategories
+            for subcategory in Subcategory.objects.filter(category=category):
+                new_subcategory = Subcategory(
+                    name=subcategory.name,
+                    percentage=subcategory.percentage,
+                    category=new_category
+                )
+                new_subcategory.save()
+        
+        return CopyBudgetPlan(
+            budget_plan=new_plan,
+            success=True,
+            message="Budget plan successfully copied"
+        )
+
+
+
 class CreateCategory(graphene.Mutation):
     class Arguments:
         name = graphene.String(required=True)
@@ -409,6 +463,7 @@ class Mutation(graphene.ObjectType):
     update_category = UpdateCategory.Field()
     update_subcategory = UpdateSubcategory.Field()
     update_budget_plan = UpdateBudgetPlan.Field()
+    copy_budget_plan = CopyBudgetPlan.Field()
     delete_budget_plan = DeleteBudgetPlan.Field()
     delete_category = DeleteCategory.Field()
     delete_subcategory = DeleteSubcategory.Field()
