@@ -14,3 +14,26 @@ six==1.17.0
 sqlparse==0.5.3
 text-unidecode==1.3
 typing_extensions==4.12.2
+
+
+src/
+├── styles/
+│   ├── base/
+│   │   ├── _reset.css        # CSS reset/normalize
+│   │   ├── _typography.css   # Typography styles
+│   │   ├── _variables.css    # CSS variables (colors, spacing, etc.)
+│   │   └── _animations.css   # Global animations
+│   ├── components/
+│   │   ├── Button.css        # Button styles
+│   │   ├── Card.css          # Card styles
+│   │   ├── Form.css          # Form element styles
+│   │   └── ...
+│   ├── layouts/
+│   │   ├── Dashboard.css     # Dashboard layout styles
+│   │   ├── Auth.css          # Authentication pages layout
+│   │   └── ...
+│   ├── pages/
+│   │   ├── BudgetPlanDetail.css  # Page-specific styles
+│   │   ├── CreateBudgetPlan.css  # Page-specific styles
+│   │   └── ...
+│   └── index.css             # Main stylesheet that imports all others

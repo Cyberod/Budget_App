@@ -8,7 +8,7 @@ import Dashboard from './pages/Dashboard';
 import CreateBudgetPlan from './pages/CreateBudgetPlan';
 import BudgetPlanDetail from './pages/BudgetPlanDetail';
 import ProtectedRoute from './components/auth/ProtectedRoute';
-import './App.css';
+import './styles/App.css';
 
 function App() {
   return (
