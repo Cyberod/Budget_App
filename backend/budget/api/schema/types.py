@@ -16,7 +16,7 @@ class UserType(DjangoObjectType):
 class BudgetPlanType(DjangoObjectType):
     class Meta:
         model = BudgetPlan
-        fields = ('id', 'name', 'user', 'is_predefined', 'created_at', 'category_set', 'currency')
+        fields = ('id', 'name', 'is_predefined', 'created_at', 'category_set', 'currency')
 
 class CategoryType(DjangoObjectType):
     class Meta:

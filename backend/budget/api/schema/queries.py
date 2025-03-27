@@ -42,14 +42,14 @@ class Query(graphene.ObjectType):
         raise Exception("you do not have permission to view this budget plan")
     
     @login_required
-    def resolve_user_budget_plan(self, info, id):
+    def resolve_user_budget_plans(self, info):
         user = info.context.user
 
         if user.is_authenticated:
             return BudgetPlan.objects.filter(user=user, is_predefined=False)
         
     def resolve_predefined_plans(self, info):
-        return BudgetPlan.ojects.filter(is_predefined=True)
+        return BudgetPlan.objects.filter(is_predefined=True)
 
     def resolve_all_currencies(self, info):
         return Currency.objects.all()
