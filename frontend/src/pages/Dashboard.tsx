@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import '../styles/layouts/Dashboard.css';
 
 
+
 // GraphQL query to get user's budget plans
 const GET_USER_BUDGET_PLANS =  gql`
     query {

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, gql } from '@apollo/client';
-import { BudgetPlan } from '../types/budget';
+import { CategoryFormState } from '../types/budget';
+
 
 // GraphQL query to get a specific budget plan with its categories
 const GET_BUDGET_PLAN = gql`
@@ -33,32 +34,52 @@ const CREATE_CATEGORY = gql`
   }
 `;
 
-// Define the type for the query response
-interface BudgetPlanDetailData {
-  budgetPlan: BudgetPlan & {
-    categorySet: {
-      id: string;
-      name: string;
-      percentage: number;
-    }[];
-  };
-}
+// GraphQL mutation to update a category
+const UPDATE_CATEGORY = gql`
+  mutation UpdateCategory($categoryId: ID!, $name: String, $percentage: Decimal) {
+    updateCategory(categoryId: $categoryId, name: $name, percentage: $percentage) {
+      Category {
+        id
+        name
+        percentage
+      }
+    }
+  }
+`;
+
+// GraphQL mutation to delete a category
+const DELETE_CATEGORY = gql`
+  mutation DeleteCategory($categoryId: ID!) {
+    deleteCategory(categoryId: $categoryId) {
+      success
+      message
+    }
+  }
+`;
+
+// Category form state type
+
 
 const BudgetPlanDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   
-  // State for the new category form
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [newCategoryPercentage, setNewCategoryPercentage] = useState('');
+  // State for the category form
+  const [categoryForm, setCategoryForm] = useState<CategoryFormState>({
+    name: '',
+    percentage: '',
+    isEditing: false
+  });
+  
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<string | null>(null);
   
   // Execute the query to get the budget plan details
-  const { loading, error: queryError, data, refetch } = useQuery<BudgetPlanDetailData>(
+  const { loading, error: queryError, data, refetch } = useQuery(
     GET_BUDGET_PLAN,
     {
-      variables: { id: id },
+      variables: { id },
       fetchPolicy: 'network-only', // Don't use cache
     }
   );
@@ -66,13 +87,7 @@ const BudgetPlanDetail = () => {
   // Set up the mutation to create a category
   const [createCategory, { loading: creatingCategory }] = useMutation(CREATE_CATEGORY, {
     onCompleted: () => {
-      // Clear the form and hide it
-      setNewCategoryName('');
-      setNewCategoryPercentage('');
-      setShowCategoryForm(false);
-      setError(null);
-      
-      // Refetch the budget plan to get the updated categories
+      resetForm();
       refetch();
     },
     onError: (error) => {
@@ -80,42 +95,142 @@ const BudgetPlanDetail = () => {
     }
   });
   
-  // Handle form submission for creating a new category
-  const handleCreateCategory = (e: React.FormEvent) => {
+  // Set up the mutation to update a category
+  const [updateCategory, { loading: updatingCategory }] = useMutation(UPDATE_CATEGORY, {
+    onCompleted: () => {
+      resetForm();
+      refetch();
+    },
+    onError: (error) => {
+      setError(error.message);
+    }
+  });
+  
+  // Set up the mutation to delete a category
+  const [deleteCategory, { loading: deletingCategory }] = useMutation(DELETE_CATEGORY, {
+    onCompleted: () => {
+      setDeleteConfirmation(null);
+      refetch();
+    },
+    onError: (error) => {
+      setError(error.message);
+    }
+  });
+  
+  // Reset the form
+  const resetForm = () => {
+    setCategoryForm({
+      name: '',
+      percentage: '',
+      isEditing: false
+    });
+    setShowCategoryForm(false);
+    setError(null);
+  };
+  
+  // Handle form submission for creating/updating a category
+  const handleSubmitCategory = (e: React.FormEvent) => {
     e.preventDefault();
     
     // Validate form
-    if (!newCategoryName.trim()) {
+    if (!categoryForm.name.trim()) {
       setError('Category name is required');
       return;
     }
     
-    const percentage = parseFloat(newCategoryPercentage);
+    const percentage = parseFloat(categoryForm.percentage);
     if (isNaN(percentage) || percentage <= 0 || percentage > 100) {
       setError('Percentage must be a number between 0 and 100');
       return;
     }
-    
-    // Submit the mutation
-    createCategory({
-      variables: {
-        name: newCategoryName,
-        percentage: newCategoryPercentage,
-        budgetPlanId: id
-      }
-    });
-  };
 
-  console.log("Mutation variables:", {
-    name: newCategoryName,
-    percentage: newCategoryPercentage,
-    budgetPlanId: id
-  });
+    // Check if data and budgetPlan exist before proceeding
+    if (!data || !data.budgetPlan) {
+      setError('Budget plan data is not available. Please try again.');
+      return;
+    }
+    
+    if (categoryForm.isEditing && categoryForm.id) {
+
+      const currentCategory = data.budgetPlan.categorySet.find(
+        (cat:any) => cat.id === categoryForm.id
+      );
+
+      if (currentCategory) {
+        const otherCategoriesTotal = data?.budgetPlan.categorySet
+          ?.filter((cat:any) => cat.id !== categoryForm.id)
+          ?.reduce((sum: number, cat: any) => sum + parseFloat(cat.percentage), 0);
+
+        const newTotal = otherCategoriesTotal + percentage;
+
+        if (newTotal > 100) {
+          setError(`Total percentage would exceed 100%. Other categories total: ${otherCategoriesTotal.toFixed(2)}%, new total would be: ${newTotal.toFixed(2)}%`);
+          return;
+        }
+      }
+
+      // Update existing category
+      updateCategory({
+        variables: {
+          categoryId: categoryForm.id,
+          name: categoryForm.name,
+          percentage: categoryForm.percentage
+        }
+      });
+    } else {
+      // For new categories, check if adding this would exceed 100%
+      const currentTotal = data.budgetPlan.categorySet.reduce(
+        (sum: number, cat: any) => sum + parseFloat(cat.percentage), 
+        0
+      );
+      
+      if (currentTotal + percentage > 100) {
+        setError(`Adding this category would exceed 100%. Current total: ${currentTotal.toFixed(2)}%, new total would be: ${(currentTotal + percentage).toFixed(2)}%`);
+        return;
+      }
+      
+      // Create new category
+      createCategory({
+        variables: {
+          name: categoryForm.name,
+          percentage: categoryForm.percentage,
+          budgetPlanId: id
+        }
+      });
+    }
+  };
   
+  // Handle edit category button click
+  const handleEditCategory = (category: { id: string; name: string; percentage: string }) => {
+    setCategoryForm({
+      id: category.id,
+      name: category.name,
+      percentage: category.percentage,
+      isEditing: true
+    });
+    setShowCategoryForm(true);
+    setError(null);
+  };
+  
+  // Handle delete category button click
+  const handleDeleteCategory = (categoryId: string) => {
+    setDeleteConfirmation(categoryId);
+  };
+  
+  // Confirm category deletion
+  const confirmDeleteCategory = () => {
+    if (deleteConfirmation) {
+      deleteCategory({
+        variables: {
+          categoryId: deleteConfirmation
+        }
+      });
+    }
+  };
   
   // Calculate the total percentage of all categories
-  const totalPercentage = data?.budgetPlan.categorySet.reduce(
-    (sum, category) => sum + category.percentage,
+  const totalPercentage = data?.budgetPlan?.categorySet?.reduce(
+    (sum: number, category: any) => sum + parseFloat(category.percentage),
     0
   ) || 0;
   
@@ -136,16 +251,19 @@ const BudgetPlanDetail = () => {
       <div className="budget-plan-info">
         <p>Created: {new Date(data.budgetPlan.createdAt).toLocaleDateString()}</p>
         <p>Type: {data.budgetPlan.isPredefined ? 'Predefined Plan' : 'Custom Plan'}</p>
-        <p>Total Allocation: {totalPercentage}%</p>
-        <p>Remaining: {(100 - totalPercentage)}%</p>
+        <p>Total Allocation: {totalPercentage.toFixed(2)}%</p>
+        <p>Remaining: {(100 - totalPercentage).toFixed(2)}%</p>
       </div>
       
       <div className="categories-section">
         <div className="categories-header">
           <h2>Categories</h2>
-          {!data.budgetPlan.isPredefined && (
+          {!data.budgetPlan.isPredefined && totalPercentage < 100 && (
             <button 
-              onClick={() => setShowCategoryForm(!showCategoryForm)}
+              onClick={() => {
+                resetForm();
+                setShowCategoryForm(!showCategoryForm);
+              }}
               className="add-button"
             >
               {showCategoryForm ? 'Cancel' : 'Add Category'}
@@ -155,7 +273,7 @@ const BudgetPlanDetail = () => {
         
         {showCategoryForm && (
           <div className="category-form">
-            <h3>Add New Category</h3>
+            <h3>{categoryForm.isEditing ? 'Edit Category' : 'Add New Category'}</h3>
             
             {error && (
               <div className="error-message">
@@ -163,15 +281,15 @@ const BudgetPlanDetail = () => {
               </div>
             )}
             
-            <form onSubmit={handleCreateCategory}>
+            <form onSubmit={handleSubmitCategory}>
               <div className="form-group">
                 <label htmlFor="categoryName">Category Name</label>
                 <input
                   type="text"
                   id="categoryName"
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  disabled={creatingCategory}
+                  value={categoryForm.name}
+                  onChange={(e) => setCategoryForm({...categoryForm, name: e.target.value})}
+                  disabled={creatingCategory || updatingCategory}
                   placeholder="e.g., Housing, Food, Transportation"
                 />
               </div>
@@ -181,9 +299,9 @@ const BudgetPlanDetail = () => {
                 <input
                   type="number"
                   id="categoryPercentage"
-                  value={newCategoryPercentage}
-                  onChange={(e) => setNewCategoryPercentage(e.target.value)}
-                  disabled={creatingCategory}
+                  value={categoryForm.percentage}
+                  onChange={(e) => setCategoryForm({...categoryForm, percentage: e.target.value})}
+                  disabled={creatingCategory || updatingCategory}
                   placeholder="e.g., 30"
                   min="0.01"
                   max="100"
@@ -192,11 +310,48 @@ const BudgetPlanDetail = () => {
               </div>
               
               <div className="form-actions">
-                <button type="submit" disabled={creatingCategory}>
-                  {creatingCategory ? 'Adding...' : 'Add Category'}
+                <button 
+                  type="button" 
+                  onClick={resetForm}
+                  disabled={creatingCategory || updatingCategory}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={creatingCategory || updatingCategory}
+                >
+                  {creatingCategory || updatingCategory 
+                    ? (categoryForm.isEditing ? 'Updating...' : 'Adding...') 
+                    : (categoryForm.isEditing ? 'Update Category' : 'Add Category')}
                 </button>
               </div>
             </form>
+          </div>
+        )}
+        
+        {/* Delete confirmation modal */}
+        {deleteConfirmation && (
+          <div className="delete-confirmation-modal">
+            <div className="modal-content">
+              <h3>Confirm Deletion</h3>
+              <p>Are you sure you want to delete this category? This action cannot be undone.</p>
+              <div className="modal-actions">
+                <button 
+                  onClick={() => setDeleteConfirmation(null)}
+                  disabled={deletingCategory}
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmDeleteCategory}
+                  disabled={deletingCategory}
+                  className="delete-button"
+                >
+                  {deletingCategory ? 'Deleting...' : 'Delete Category'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
         
@@ -204,16 +359,26 @@ const BudgetPlanDetail = () => {
           <p>No categories yet. Add some to start building your budget plan.</p>
         ) : (
           <div className="categories-list">
-            {data.budgetPlan.categorySet.map((category) => (
+            {data.budgetPlan.categorySet.map((category: any) => (
               <div key={category.id} className="category-card">
                 <div className="category-info">
                   <h3>{category.name}</h3>
-                  <p>{category.percentage}%</p>
+                  <p>{parseFloat(category.percentage).toFixed(2)}%</p>
                 </div>
                 {!data.budgetPlan.isPredefined && (
                   <div className="category-actions">
-                    <button className="edit-button">Edit</button>
-                    <button className="delete-button">Delete</button>
+                    <button 
+                      className="edit-button"
+                      onClick={() => handleEditCategory(category)}
+                    >
+                      Edit
+                    </button>
+                    <button 
+                      className="delete-button"
+                      onClick={() => handleDeleteCategory(category.id)}
+                    >
+                      Delete
+                    </button>
                   </div>
                 )}
               </div>

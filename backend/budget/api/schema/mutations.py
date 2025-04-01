@@ -212,15 +212,6 @@ class UpdateCategory(graphene.Mutation):
         category_id = graphene.ID(required=True)
 
     Category = graphene.Field(CategoryType)
-
-    @staticmethod
-    def validate_new_total(budget_plan, current_category, new_percentage):
-        total = Category.objects.filter(budget_plan=budget_plan)\
-        .exclude(id=current_category.id)\
-        .aggregate(total=models.Sum('percentage'))['total'] or 0
-
-        #check if total is more than 100%
-        return total + new_percentage <= 100
     
 
     @classmethod

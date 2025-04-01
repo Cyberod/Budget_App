@@ -39,7 +39,7 @@ def validate_category_name_unique(name, budget_plan, current_category=None):
     """Validates category name is unique within this budget plan"""
     query = Category.objects.filter(budget_plan=budget_plan, name=name)
     if current_category:
-        query.exclude(id=current_category.id)
+        query = query.exclude(id=current_category.id)
     if query.exists():
         raise Exception(f"This budget plan already has a category named '{name}'")
     return True
@@ -109,7 +109,9 @@ def validate_category_total(budget_plan, current_category=None, new_percentage=N
     total = query.aggregate(total=models.Sum('percentage'))['total'] or 0
 
     if new_percentage:
-        total += Decimal(str(new_percentage))
+        new_total = total + Decimal(str(new_percentage))
+        if new_total > 100:
+            raise Exception (f"Total percentage cannot exceed 100%. Current total: {total}%, New total would be: {new_total}%")
 
     return True
 
